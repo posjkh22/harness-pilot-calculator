@@ -7,9 +7,9 @@ project:
   language: javascript
   ui: html
   desktop: electron
-  api: no            # auto | yes | no
-  runsDir: runs      # where per-run artifacts are kept
-  specDir: spec      # where the official requirements / SW RS / matrix live
+  api: no # auto | yes | no
+  runsDir: runs # where per-run artifacts are kept
+  specDir: spec # where the official requirements / SW RS / matrix live
 
 workflow:
   requirementScoreThreshold: 85
@@ -21,33 +21,38 @@ workflow:
   maxImplementationRetries: 3
   maxBuildFixRetries: 3
   maxTestFixRetries: 3
-  maxSameFailureCount: 2        # identical failure signature repeats before triage
+  maxSameFailureCount: 2 # identical failure signature repeats before triage
   strictTdd: false
-  allowQualityExceptionApproval: false   # build/test failures are never waivable regardless
+  allowQualityExceptionApproval: false # build/test failures are never waivable regardless
+  ursScoreThreshold: 85
+  srsScoreThreshold: 85
+  maxUrsRetries: 3
+  maxSrsRetries: 3
+  skipNodes: []
 
 llm:
   provider: codex
   cli: codex
-  model: gpt-5.5
+  model: gpt-5.6-luna
   # reviewerModel: opus         # reviewers can use a stronger model than writers
   # implementerModel: sonnet
   # fallbackModel: sonnet
-  settingSources: ""            # "" loads no user/project settings - keeps runs reproducible
+  settingSources: "" # "" loads no user/project settings - keeps runs reproducible
   strictMcpConfig: true
-  maxRetriesPerCall: 2          # transport errors and schema violations
-  maxOutputTokens: 16000        # harness-enforced response budget; Claude CLI has no direct token flag
+  maxRetriesPerCall: 2 # transport errors and schema violations
+  maxOutputTokens: 16000 # harness-enforced response budget; Claude CLI has no direct token flag
   timeoutSeconds: 1800
   # maxBudgetUsdPerCall: 5
   # maxBudgetUsdPerRun: 50
-  readOnlyTools: ["Read", "Glob", "Grep"]      # writers and reviewers
-  editTools: ["Read", "Glob", "Grep", "Edit", "Write"]  # implementers; no shell, ever
+  readOnlyTools: [ "Read", "Glob", "Grep" ] # writers and reviewers
+  editTools: [ "Read", "Glob", "Grep", "Edit", "Write" ] # implementers; no shell, ever
   extraArgs: []
 
 # Only commands listed here can be executed. They are spawned with shell: false.
 commands:
-  install: ["npm", "install"]
-  build: ["npm", "run", "build"]
-  testUi: ["npm", "run", "test:integration:ui"]
+  install: [ "npm", "install" ]
+  build: [ "npm", "run", "build" ]
+  testUi: [ "npm", "run", "test:integration:ui" ]
   # package: ["npm", "run", "dist:test"]
 
 timeoutsSeconds:
@@ -80,20 +85,22 @@ security:
     - "node_modules/**"
     - "dist/**"
     - "build/**"
-  redactPatterns:        # masked in every log and artifact the harness writes
+  redactPatterns:
+    # masked in every log and artifact the harness writes
     - "Authorization:.*"
     - "*_TOKEN"
     - "*_SECRET"
     - "*_PASSWORD"
     - "*_KEY"
-  secretScanPatterns:    # a match in a changed file or staged diff blocks the commit
+  secretScanPatterns:
+    # a match in a changed file or staged diff blocks the commit
     - "sk-ant-[A-Za-z0-9_-]{8,}"
     - "gh[pousr]_[A-Za-z0-9]{16,}"
     - "-----BEGIN[^-]*PRIVATE KEY-----"
     - "AKIA[0-9A-Z]{16}"
 
 deployment:
-  enabled: false               # true also requires an adapter per environment
+  enabled: false # true also requires an adapter per environment
   requireHumanApproval: true
   artifactGlobs:
     - "dist/**"
@@ -105,5 +112,5 @@ deployment:
   #     adapter: "./deploy/production-adapter.js"
 
 checkpoint:
-  driver: sqlite               # sqlite | memory
+  driver: sqlite # sqlite | memory
   path: ".harness/checkpoints.sqlite"
