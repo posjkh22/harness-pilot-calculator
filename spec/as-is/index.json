@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "generatedAt": "2026-09-15T13:16:11.159Z",
+  "projectRoot": "D:\\Dev\\automation\\rs-dev-cm-re\\pilots\\pilot-calculator",
+  "sourceTreeHash": "37422f3ddf926bbc4c07e9e1a17bca36ff9f7232a7b419c656cbeee5051b3893",
+  "fileCount": 6,
+  "moduleCount": 5,
+  "testCount": 1,
+  "interfaceCount": 0,
+  "baselineCreatedAt": "2026-09-15T12:16:19.088Z",
+  "updatedAt": "2026-09-15T13:16:11.169Z",
+  "updatedBy": {
+    "runId": "RUN-20260915121559",
+    "reason": "post-change"
+  },
+  "narrativeCount": 5,
+  "staleNarrativeCount": 0,
+  "decisionCount": 9,
+  "previousSourceTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+}

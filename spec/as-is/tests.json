@@ -1,0 +1,15 @@
+[
+  {
+    "path": "tests/calculator.spec.js",
+    "framework": "@playwright/test",
+    "cases": 13,
+    "imports": [
+      "fs",
+      "net",
+      "os",
+      "path",
+      "@playwright/test",
+      "electron"
+    ]
+  }
+]

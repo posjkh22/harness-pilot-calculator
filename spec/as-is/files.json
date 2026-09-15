@@ -1,0 +1,44 @@
+[
+  {
+    "path": "electron/main.js",
+    "hash": "fcccd799e323b7c2b714bdf839cb00b4ce6cd7bf42e37b6b47b2ef32f15a3e26",
+    "size": 998,
+    "kind": "source",
+    "scanned": true
+  },
+  {
+    "path": "electron/preload.js",
+    "hash": "046719a4c628bc3595a1286e301501aa5cb7aa90f387be32c95b088a34bdbc3f",
+    "size": 61,
+    "kind": "source",
+    "scanned": true
+  },
+  {
+    "path": "package.json",
+    "hash": "6be2844f45028c788a45dbcba31e468f264105d4f5f91f7660b6cb0ae5b3ff36",
+    "size": 625,
+    "kind": "manifest",
+    "scanned": true
+  },
+  {
+    "path": "tests/calculator.spec.js",
+    "hash": "72f8307057a224510e21aee65a00d124b20f39629fb3c4447088d7ca66a3149b",
+    "size": 9700,
+    "kind": "test",
+    "scanned": true
+  },
+  {
+    "path": "ui/calculator.js",
+    "hash": "963076f7d420d2b222e094f00f1f9feaa748737b1ef8e5b413ea3cfc78a9c4a7",
+    "size": 3702,
+    "kind": "source",
+    "scanned": true
+  },
+  {
+    "path": "ui/index.html",
+    "hash": "24603e78bdac5c90be81fd08ed767c2b2496d3517acd8a4ba3d7e689c9f70f24",
+    "size": 1841,
+    "kind": "html",
+    "scanned": true
+  }
+]

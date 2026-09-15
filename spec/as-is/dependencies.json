@@ -1,0 +1,64 @@
+{
+  "packageJsonPresent": true,
+  "name": "pilot-calculator",
+  "version": "1.0.0",
+  "main": "electron/main.js",
+  "type": "commonjs",
+  "scripts": {
+    "build": "node --check electron/main.js && node --check electron/preload.js && node --check ui/calculator.js",
+    "lint": "node --check electron/main.js && node --check electron/preload.js && node --check ui/calculator.js",
+    "test:integration:electron": "playwright test tests",
+    "test:integration:ui": "playwright test tests"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "electron": "^39.0.0"
+  },
+  "usedPackages": [
+    {
+      "name": "@playwright/test",
+      "importedBy": [
+        "tests/calculator.spec.js"
+      ],
+      "declared": true
+    },
+    {
+      "name": "electron",
+      "importedBy": [
+        "electron/main.js",
+        "tests/calculator.spec.js"
+      ],
+      "declared": true
+    },
+    {
+      "name": "fs",
+      "importedBy": [
+        "tests/calculator.spec.js"
+      ],
+      "declared": false
+    },
+    {
+      "name": "net",
+      "importedBy": [
+        "tests/calculator.spec.js"
+      ],
+      "declared": false
+    },
+    {
+      "name": "os",
+      "importedBy": [
+        "tests/calculator.spec.js"
+      ],
+      "declared": false
+    },
+    {
+      "name": "path",
+      "importedBy": [
+        "electron/main.js",
+        "tests/calculator.spec.js"
+      ],
+      "declared": false
+    }
+  ]
+}

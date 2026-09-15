@@ -1,0 +1,59 @@
+[
+  {
+    "path": "electron/main.js",
+    "area": "electron/main",
+    "kind": "source",
+    "exports": [],
+    "imports": [
+      "electron",
+      "path"
+    ],
+    "lines": 41,
+    "hash": "fcccd799e323b7c2b714bdf839cb00b4ce6cd7bf42e37b6b47b2ef32f15a3e26"
+  },
+  {
+    "path": "electron/preload.js",
+    "area": "electron/preload",
+    "kind": "source",
+    "exports": [],
+    "imports": [],
+    "lines": 2,
+    "hash": "046719a4c628bc3595a1286e301501aa5cb7aa90f387be32c95b088a34bdbc3f"
+  },
+  {
+    "path": "tests/calculator.spec.js",
+    "area": "test-infra",
+    "kind": "test",
+    "exports": [],
+    "imports": [
+      "fs",
+      "net",
+      "os",
+      "path",
+      "@playwright/test",
+      "electron"
+    ],
+    "lines": 222,
+    "hash": "72f8307057a224510e21aee65a00d124b20f39629fb3c4447088d7ca66a3149b"
+  },
+  {
+    "path": "ui/calculator.js",
+    "area": "renderer/ui",
+    "kind": "source",
+    "exports": [
+      "calculate"
+    ],
+    "imports": [],
+    "lines": 119,
+    "hash": "963076f7d420d2b222e094f00f1f9feaa748737b1ef8e5b413ea3cfc78a9c4a7"
+  },
+  {
+    "path": "ui/index.html",
+    "area": "renderer/ui",
+    "kind": "html",
+    "exports": [],
+    "imports": [],
+    "lines": 35,
+    "hash": "24603e78bdac5c90be81fd08ed767c2b2496d3517acd8a4ba3d7e689c9f70f24"
+  }
+]
