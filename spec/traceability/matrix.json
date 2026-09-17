@@ -1,0 +1,115 @@
+{
+  "runId": "RUN-20260916134905",
+  "matrix": [
+    {
+      "ursId": "URS-001",
+      "acceptanceCriterionId": "AC-URS-001-01",
+      "srsIds": [
+        "SRS-URS-001-01"
+      ],
+      "testCaseIds": [
+        "TC-URS-001-AC-01-01",
+        "TC-URS-001-AC-01-02"
+      ],
+      "codeFiles": [
+        "package.json",
+        "electron/main.js",
+        "electron/preload.js",
+        "ui/index.html",
+        "ui/styles.css",
+        "ui/calculator.js",
+        "tests/calculator.test.js",
+        "tests/electron.integration.test.js"
+      ],
+      "result": "NOT_RUN"
+    },
+    {
+      "ursId": "URS-002",
+      "acceptanceCriterionId": "AC-URS-002-01",
+      "srsIds": [
+        "SRS-URS-002-01"
+      ],
+      "testCaseIds": [
+        "TC-URS-002-AC-01-01",
+        "TC-URS-002-AC-01-02"
+      ],
+      "codeFiles": [
+        "ui/index.html",
+        "ui/styles.css",
+        "ui/calculator.js",
+        "tests/calculator.test.js",
+        "tests/electron.integration.test.js"
+      ],
+      "result": "NOT_RUN"
+    },
+    {
+      "ursId": "URS-003",
+      "acceptanceCriterionId": "AC-URS-003-01",
+      "srsIds": [
+        "SRS-URS-003-01"
+      ],
+      "testCaseIds": [
+        "TC-URS-003-AC-01-01"
+      ],
+      "codeFiles": [
+        "ui/index.html",
+        "ui/calculator.js",
+        "tests/calculator.test.js",
+        "tests/electron.integration.test.js"
+      ],
+      "result": "NOT_RUN"
+    },
+    {
+      "ursId": "URS-004",
+      "acceptanceCriterionId": "AC-URS-004-01",
+      "srsIds": [
+        "SRS-URS-004-01"
+      ],
+      "testCaseIds": [
+        "TC-URS-004-AC-01-01",
+        "TC-URS-004-AC-01-02",
+        "TC-URS-004-AC-01-03"
+      ],
+      "codeFiles": [
+        "ui/calculator.js",
+        "tests/calculator.test.js",
+        "tests/calculator.ui.test.js"
+      ],
+      "result": "NOT_RUN"
+    },
+    {
+      "ursId": "URS-005",
+      "acceptanceCriterionId": "AC-URS-005-01",
+      "srsIds": [
+        "SRS-URS-005-01"
+      ],
+      "testCaseIds": [
+        "TC-URS-005-AC-01-01",
+        "TC-URS-005-AC-01-02"
+      ],
+      "codeFiles": [
+        "ui/calculator.js",
+        "tests/calculator.test.js",
+        "tests/calculator.ui.test.js"
+      ],
+      "result": "NOT_RUN"
+    },
+    {
+      "ursId": "URS-006",
+      "acceptanceCriterionId": "AC-URS-006-01",
+      "srsIds": [
+        "SRS-URS-006-01"
+      ],
+      "testCaseIds": [
+        "TC-URS-006-AC-01-01",
+        "TC-URS-006-AC-01-02"
+      ],
+      "codeFiles": [
+        "ui/calculator.js",
+        "tests/calculator.test.js",
+        "tests/calculator.ui.test.js"
+      ],
+      "result": "NOT_RUN"
+    }
+  ]
+}

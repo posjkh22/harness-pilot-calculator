@@ -1,0 +1,729 @@
+# agent-harness 워크플로 시퀀스 리소스.
+#
+# `harness init`이 이 파일을 <your-electron-app>/harness.workflow.yaml 로 복사한다.
+# 대시보드(harness ui)의 "워크플로" 탭이 이 파일을 읽어 Mermaid 시퀀스 다이어그램으로
+# 그리고, `{{...}}` 자리에는 harness.config.yaml 의 실제 값을 넣어 보여준다.
+#
+# 표시 전용이다. 실행 순서·분기는 agent-harness/src/graph.js 와 각 노드 코드가 정하며,
+# 이 파일을 고쳐도 실행은 바뀌지 않는다. 하네스 쪽 원본(harness.workflow.example.yaml)과
+# 내용이 다르면 대시보드가 알려 준다. 원본을 다시 받으려면 이 파일을 지우고
+# `harness init --project <dir>` 을 다시 실행한다(없는 파일만 만든다).
+#
+# 자리표시자
+#   {{workflow.maxUrsRetries}}   harness.config.yaml 의 값 (스키마 기본값 적용 후)
+#   {{skip:review_urs}}          workflow.skipNodes 에 있으면 " · 건너뜀", 아니면 빈 문자열
+#   {{cmd:build}}                commands.build 를 한 줄로, 없으면 "(미설정)"
+#
+# Mermaid 문법 주의: 메시지 텍스트에 ';' '#' 와 단어 'end' 를 쓰지 않는다.
+version: 1
+title: agent-harness 워크플로 시퀀스
+description: >-
+  요청 한 장이 착수 → 기준선 → 요구사항 → 분석·설계 → 계획·구현 → 실행 검증·인수 → 배포를
+  지나는 순서와, 그 사이의 hard gate(결정적 검사)·soft gate(LLM 심사)·승인·사람 결정 지점.
+
+legend:
+  - kind: hard
+    label: Hard gate · 결정적 검사
+    color: rgba(220,38,38,0.10)
+    description: 코드가 판정한다. 실패는 stage 예산 안에서 writer/implementer 로 되돌아가고, 예산이 다하면 사람에게 간다.
+  - kind: soft
+    label: Soft gate · LLM 심사
+    color: rgba(37,99,235,0.10)
+    description: 점수·rubric 심사. CRITICAL 이 없고 점수가 기준 이상이며 심사자가 PASS 해야 통과한다. skipNodes 로 생략할 수 있다.
+  - kind: command
+    label: 결정적 명령 · npm/git
+    color: rgba(8,145,178,0.10)
+    description: 설정에 등록된 고정 명령만 하네스가 직접 실행한다. 실패는 품질 예외로 우회할 수 없다.
+  - kind: human
+    label: 사람 · 승인/결정
+    color: rgba(217,119,6,0.14)
+    description: WAITING_INPUT / WAITING_TRIAGE / WAITING_DEPLOY_APPROVAL 에서 실행이 멈추고 사람의 결정으로 재개된다.
+
+# 대시보드의 gate 표. budget/threshold/toggle 은 harness.config.yaml 경로이며 현재 값으로 치환된다.
+gates:
+  - node: validate_urs
+    stage: urs
+    kind: hard
+    what: URS 스키마·출처·중복·수용 기준 검사
+    budget: workflow.maxUrsRetries
+    onFail: write_urs
+    onExhaust: human_triage
+    waits: [BLOCKING_OPEN_QUESTIONS (WAITING_INPUT), URS_HARD_GATE_EXHAUSTED]
+  - node: review_urs
+    stage: urs
+    kind: soft
+    what: URS rubric 채점
+    threshold: workflow.ursScoreThreshold
+    budget: workflow.maxUrsRetries
+    onFail: write_urs
+    onExhaust: human_triage
+    skippable: true
+    waits: [URS_REVIEW_NEEDS_HUMAN, URS_REVIEW_EXHAUSTED]
+  - node: validate_srs
+    stage: srs
+    kind: hard
+    what: SRS·설계 결정·As-Is 호환성(migration)·보안 기본값 검사
+    budget: workflow.maxSrsRetries
+    onFail: write_srs
+    onExhaust: human_triage
+    waits: [SRS_REQUIREMENT_CONFLICT (WAITING_INPUT), SECURITY_WEAKENING_NEEDS_APPROVAL, SRS_HARD_GATE_EXHAUSTED]
+  - node: review_srs
+    stage: srs
+    kind: soft
+    what: 요구 명세 60점 + 설계 결정 40점 채점
+    threshold: workflow.srsScoreThreshold
+    budget: workflow.maxSrsRetries
+    onFail: write_srs 또는 write_urs (finding 의 repairTarget)
+    onExhaust: human_triage
+    skippable: true
+    waits: [SRS_REVIEW_NEEDS_HUMAN, SRS_REVIEW_EXHAUSTED]
+  - node: analyze_change_impact
+    stage: implementation
+    kind: hard
+    what: SRS 계획 vs 실제 트리 (편집 가능/금지 파일·기존 계약·suite·의존성)
+    budget: workflow.maxSrsRetries
+    onFail: write_srs
+    onExhaust: human_triage
+    waits: [IMPACT_GATE_EXHAUSTED]
+  - node: validate_project_manifest
+    stage: implementation
+    kind: hard
+    what: package.json 구조·필수 script·electron·계획 dependency·lockfile 일치
+    budget: workflow.maxManifestRetries
+    onFail: prepare_project_manifest
+    onExhaust: human_triage
+    waits: [MANIFEST_GATE_EXHAUSTED, MANIFEST_RESOLUTION_EXHAUSTED, LOCKFILE_GENERATION_FAILED, MANIFEST_PATH_NOT_ALLOWED]
+  - node: install_dependencies
+    stage: implementation
+    kind: command
+    what: 재현 설치 (lockfile 불일치면 1회 재동기화)
+    command: install
+    onExhaust: human_triage
+    skippable: true
+    waits: [INSTALL_FAILED]
+  - node: verify_red_tests
+    stage: implementation
+    kind: command
+    what: strictTdd 일 때 제품 코드 전 Red 확인
+    toggle: workflow.strictTdd
+    onExhaust: human_triage
+    waits: [TDD_SUITE_NOT_CONFIGURED, TDD_RED_INFRASTRUCTURE_FAILED, TDD_RED_NOT_OBSERVED]
+  - node: validate_implementation
+    stage: implementation
+    kind: hard
+    what: URS→SRS→TC→파일 추적성, 테스트 구조, manifest 변조
+    budget: workflow.maxImplementationRetries
+    sameFailure: workflow.maxSameFailureCount
+    onFail: write_test_plan / prepare_project_manifest / implement_tests / implement_code (위반 종류별)
+    onExhaust: human_triage
+    waits: [IMPLEMENTATION_HARD_GATE_EXHAUSTED, IMPLEMENTATION_HARD_GATE_REPEATED]
+  - node: review_implementation
+    stage: implementation
+    kind: soft
+    what: diff·변경 보고서·추적성 심사
+    threshold: workflow.implementationScoreThreshold
+    budget: workflow.maxImplementationRetries
+    onFail: write_test_plan / implement_tests / implement_code (finding 의 repairTarget)
+    onExhaust: human_triage
+    skippable: true
+    waits: [IMPLEMENTATION_REVIEW_NEEDS_HUMAN, IMPLEMENTATION_REVIEW_EXHAUSTED]
+  - node: build_project
+    stage: verification
+    kind: command
+    what: lint(선택) → build
+    command: build
+    budget: workflow.maxBuildFixRetries
+    sameFailure: workflow.maxSameFailureCount
+    onFail: implement_code
+    onExhaust: human_triage
+    skippable: true
+    waits: [LINT_CONFIG_INVALID_EXHAUSTED, LINT_FAILED_EXHAUSTED, BUILD_FAILED_EXHAUSTED]
+  - node: run_tests
+    stage: verification
+    kind: command
+    what: testUnit → testApi → testElectron → testUi, JUnit 을 모든 TC 에 매핑
+    budget: workflow.maxTestFixRetries
+    sameFailure: workflow.maxSameFailureCount
+    onFail: implement_code (제품 실패) / repair_test_infrastructure (환경 실패)
+    onExhaust: human_triage
+    skippable: true
+    waits: [TEST_FIX_EXHAUSTED, TEST_INFRA_EXHAUSTED, NO_TEST_SUITE_CONFIGURED]
+  - node: package_project
+    stage: verification
+    kind: command
+    what: commands.package 가 있을 때만 산출물 생성
+    command: package
+    onExhaust: human_triage
+    waits: [PACKAGE_FAILED]
+  - node: review_verification_evidence
+    stage: verification
+    kind: hard
+    what: 구현 gate·install·build·test·package 상태와 test summary·traceability 재확인
+    onExhaust: human_triage
+    waits: [VERIFICATION_EVIDENCE_INCOMPLETE]
+  - node: commit_changes
+    stage: verification
+    kind: command
+    what: 모든 gate·build/test 전제조건, 허용 경로, secret scan 후 커밋
+    toggle: git.autoCommit
+    onExhaust: human_triage
+    skippable: true
+    waits: [COMMIT_PRECONDITION_FAILED, COMMIT_PATH_NOT_ALLOWED, NOTHING_TO_COMMIT, SECRET_IN_DIFF]
+  - node: request_deploy_approval
+    stage: release
+    kind: human
+    what: 배포 승인 (approve / reject)
+    toggle: deployment.enabled
+    skippable: true
+    waits: [WAITING_DEPLOY_APPROVAL]
+  - node: verify_approved_artifact
+    stage: release
+    kind: hard
+    what: 승인 시점 commit SHA·artifact SHA-256 == 현재 값
+    onFail: request_deploy_approval
+    waits: [APPROVAL_INVALIDATED]
+  - node: run_smoke_test
+    stage: release
+    kind: command
+    what: 배포 후 smoke test (자동 수정 없음)
+    onExhaust: human_triage
+    skippable: true
+    waits: [SMOKE_TEST_FAILED]
+  - node: human_triage
+    stage: control
+    kind: human
+    what: retry(target + 지시/답변) · abort · approve_exception
+    toggle: workflow.allowQualityExceptionApproval
+    waits: [WAITING_TRIAGE, WAITING_INPUT]
+
+diagrams:
+  - id: overview
+    title: 전체 시퀀스
+    description: 7개 그룹을 한 장에. 각 stage 의 자동 재시도 루프와 사람이 개입하는 지점만 남기고 세부 분기는 stage 별 다이어그램에 둔다.
+    mermaid: |
+      sequenceDiagram
+        autonumber
+        participant P as 사람
+        participant H as 하네스
+        participant G as 결정적 gate
+        participant W as LLM writer·implementer
+        participant R as LLM reviewer
+        participant C as 명령(npm·git)
+
+        P->>H: harness run --request ... (mode auto | new | maintenance)
+
+        rect rgba(8,145,178,0.10)
+          Note over H,C: 그룹 1 · 착수 (1–4)
+          H->>H: initialize_run: Git·clean tree·기준 커밋·harness/runId 브랜치
+          H->>W: normalize_sources: 요청 정규화 + SI/SM 모드 판별
+          W-->>H: normalized request, mode
+          H->>G: inspect_project_manifest: package.json·lockfile 현황
+        end
+
+        rect rgba(8,145,178,0.10)
+          Note over H,G: 그룹 2 · 기준선 (5) · LLM 없음
+          H->>G: refresh_asis_inventory: 소스 트리 해시가 같으면 재사용, 다르면 갱신
+        end
+
+        rect rgba(37,99,235,0.10)
+          Note over H,R: 그룹 3 · 요구사항 (6–8)
+          loop 예산 {{workflow.maxUrsRetries}}회 (workflow.maxUrsRetries)
+            H->>W: write_urs
+            H->>G: validate_urs · hard gate
+            H->>R: review_urs · soft gate, {{workflow.ursScoreThreshold}}점 이상{{skip:review_urs}}
+          end
+          H->>H: spec/urs 게시
+        end
+
+        rect rgba(37,99,235,0.10)
+          Note over H,R: 그룹 4 · 분석·설계 (9–12)
+          H->>W: analyze_codebase: 승인된 URS 가 닿는 영역만 분석 (SM) / system context (SI)
+          loop 예산 {{workflow.maxSrsRetries}}회 (workflow.maxSrsRetries)
+            H->>W: write_srs: SRS 문서 + 설계 결정
+            H->>G: validate_srs · hard gate (요구 충돌·migration·보안)
+            H->>R: review_srs · soft gate, {{workflow.srsScoreThreshold}}점 이상{{skip:review_srs}}
+          end
+          H->>H: spec/srs 게시
+        end
+
+        rect rgba(220,38,38,0.10)
+          Note over H,C: 그룹 5 · 계획·구현 (13–20)
+          H->>G: analyze_change_impact · 결정적 (SRS 예산 공유)
+          H->>W: write_test_plan
+          loop 예산 {{workflow.maxManifestRetries}}회 (workflow.maxManifestRetries)
+            H->>W: prepare_project_manifest: CREATE / MODIFY / KEEP
+            H->>C: generate_lockfile: {{cmd:lockfile}}
+            H->>G: validate_project_manifest · hard gate
+          end
+          H->>C: install_dependencies: {{cmd:install}}{{skip:install_dependencies}}
+          loop 예산 {{workflow.maxImplementationRetries}}회 (workflow.maxImplementationRetries)
+            H->>W: implement_tests
+            H->>C: verify_red_tests (strictTdd={{workflow.strictTdd}})
+            H->>W: implement_code
+            H->>G: validate_implementation · hard gate · 같은 위반 반복 상한 {{workflow.maxSameFailureCount}}회 (workflow.maxSameFailureCount)
+            H->>R: review_implementation · soft gate, {{workflow.implementationScoreThreshold}}점 이상{{skip:review_implementation}}
+          end
+        end
+
+        rect rgba(8,145,178,0.10)
+          Note over H,C: 그룹 6 · 실행 검증·인수 (21–27)
+          loop 예산 {{workflow.maxBuildFixRetries}}회 (workflow.maxBuildFixRetries)
+            H->>C: build_project: {{cmd:lint}} → {{cmd:build}}{{skip:build_project}}
+          end
+          loop 예산 {{workflow.maxTestFixRetries}}회 (workflow.maxTestFixRetries)
+            H->>C: run_tests: Unit → API → Electron → UI{{skip:run_tests}}
+          end
+          H->>C: package_project: {{cmd:package}}
+          H->>G: review_verification_evidence · 최종 증거 hard gate
+          H->>W: update_asis_baseline: 인벤토리 재생성·설계 결정 채택{{skip:update_asis_baseline}}
+          H->>C: commit_changes (git.autoCommit={{git.autoCommit}}){{skip:commit_changes}}
+          H->>W: write_release_notes{{skip:write_release_notes}}
+        end
+
+        rect rgba(217,119,6,0.14)
+          Note over P,C: 그룹 7 · 배포 (28–29) · deployment.enabled={{deployment.enabled}}
+          H->>P: request_deploy_approval (WAITING_DEPLOY_APPROVAL){{skip:request_deploy_approval}}
+          P-->>H: approve / reject
+          H->>G: verify_approved_artifact: commit SHA·artifact 해시 재검증
+          H->>C: execute_deploy → run_smoke_test{{skip:run_smoke_test}}
+        end
+
+        rect rgba(217,119,6,0.14)
+          Note over P,H: 제어 · 어느 gate 든 예산이 다하거나 사람 결정이 필요하면
+          H->>P: human_triage (WAITING_TRIAGE / WAITING_INPUT)
+          P-->>H: retry --target 노드 / abort / approve_exception
+        end
+        H->>H: finalize_run: run-summary.json
+
+  - id: input
+    title: 그룹 1–2 · 착수·기준선
+    description: 저장소 준비, 요청 정규화·모드 판별, manifest 현황, As-Is 인벤토리. 여기서는 LLM 이 normalize_sources 한 번만 관여한다.
+    mermaid: |
+      sequenceDiagram
+        participant P as 사람
+        participant H as 하네스
+        participant G as 결정적 gate
+        participant W as LLM writer
+        participant C as git
+
+        P->>H: harness run --request ... --mode auto
+        rect rgba(8,145,178,0.10)
+          H->>C: initialize_run: git repo? 커밋 있음? 대상 브랜치 있음?
+          alt requireCleanTree={{git.requireCleanTree}} 이고 커밋되지 않은 변경 (.harness/, generatedPaths 제외)
+            H->>P: human_triage (WORKING_TREE_DIRTY 등)
+          else 정상
+            H->>C: harness/runId 작업 브랜치 생성, .gitignore 보강
+          end
+        end
+
+        rect rgba(37,99,235,0.10)
+          H->>W: normalize_sources: 요청 파일 → SRC-nnn:Ln 근거가 붙은 정규화 요청
+          W-->>H: normalized request
+          H->>W: mode-detector (--mode auto 일 때)
+          W-->>H: new | maintenance | 모호
+          alt 모드 모호 또는 요청 파일 누락
+            H->>P: human_triage (WAITING_INPUT · MODE_AMBIGUOUS / REQUEST_SOURCE_MISSING)
+            P-->>H: retry --mode new|maintenance
+          end
+        end
+
+        rect rgba(220,38,38,0.10)
+          H->>G: inspect_project_manifest: package.json·package-lock.json 존재·파싱·root 선언 일치
+          alt maintenance 인데 manifest 손상
+            H->>P: human_triage (PROJECT_MANIFEST_INVALID · 예외 승인 불가)
+          else 기록만
+            G-->>H: 00-input/project-manifest.json
+          end
+        end
+
+        rect rgba(8,145,178,0.10)
+          H->>G: refresh_asis_inventory: 정규식 스캔 (모듈·IPC·preload·HTTP·저장·의존성·테스트·import 그래프)
+          alt spec/as-is/index.json 의 소스 트리 해시와 같음
+            G-->>H: REUSED
+          else 다름
+            G-->>H: REFRESHED (근거 파일이 바뀐 서술은 STALE)
+          end
+          Note over H,G: 파일 {{asIs.maxFileBytes}} bytes 초과는 해시만 기록 (asIs.maxFileBytes)
+        end
+        H->>H: → write_urs
+
+  - id: urs
+    title: 그룹 3 · 요구사항 (6–8)
+    description: URS 작성 → hard gate → soft gate 루프. 예산은 workflow.maxUrsRetries, 통과 점수는 workflow.ursScoreThreshold.
+    mermaid: |
+      sequenceDiagram
+        participant P as 사람
+        participant H as 하네스
+        participant G as 결정적 gate
+        participant W as urs-writer
+        participant R as urs-reviewer
+
+        loop 시도 1..{{workflow.maxUrsRetries}} (workflow.maxUrsRetries)
+          H->>W: write_urs: 정규화 요청 + As-Is 이름 목록 + 직전 초안·gate 위반·심사 지시·기획 결정
+          W-->>H: urs-full.json / urs-change.json
+          rect rgba(220,38,38,0.10)
+            H->>G: validate_urs: 스키마·출처·중복·수용 기준
+            alt BLOCKING open question (decisions.json 에 답이 없는 것)
+              G-->>H: FAIL
+              H->>P: human_triage (WAITING_INPUT · BLOCKING_OPEN_QUESTIONS)
+              P-->>H: retry --answers-json ... (SRC-DEC-nnn 으로 기록)
+            else 위반
+              G-->>H: FAIL → gate-history.json 누적
+              Note over H,W: 예산 안이면 write_urs 로, 다하면 human_triage (URS_HARD_GATE_EXHAUSTED)
+            else PASS
+              G-->>H: PASS, Markdown 렌더링
+            end
+          end
+          rect rgba(37,99,235,0.10)
+            alt review_urs 건너뜀 (skipNodes){{skip:review_urs}}
+              H->>H: hard gate 결과만으로 spec/urs 게시
+            else 심사
+              H->>R: review_urs: rubric + 직전 심사 결과 + 기획 결정
+              R-->>H: score, findings (repairTarget)
+              alt CRITICAL 없음, score {{workflow.ursScoreThreshold}} 이상, decision PASS (workflow.ursScoreThreshold)
+                H->>H: spec/urs 게시, 노드별 지시 초기화 → analyze_codebase
+              else writer 가 고칠 수 없는 CRITICAL (repairTarget human)
+                H->>P: human_triage (URS_REVIEW_NEEDS_HUMAN)
+              else FAIL
+                Note over H,W: write_urs 대상 finding 만 지시로 저장, 예산이 다하면 human_triage (URS_REVIEW_EXHAUSTED)
+              end
+            end
+          end
+        end
+
+  - id: srs
+    title: 그룹 4 · 분석·설계 (9–12)
+    description: 승인된 URS 기반 As-Is 분석 → SW 명세(SRS + 설계 결정) → hard gate(요구 충돌·migration·보안) → soft gate(요구 60 + 설계 40).
+    mermaid: |
+      sequenceDiagram
+        participant P as 사람
+        participant H as 하네스
+        participant G as 결정적 gate
+        participant W as srs-writer
+        participant R as srs-reviewer
+
+        rect rgba(37,99,235,0.10)
+          alt maintenance 이고 asIs.analysis={{asIs.analysis}}
+            H->>W: codebase-seed-selector: 승인된 URS+AC 가 닿는 seed
+            W-->>H: seed 파일·인터페이스·키워드
+            H->>H: import 그래프 확장 (hop {{asIs.expansionHops}}, 파일 상한 {{asIs.maxRelevantFiles}})
+            H->>W: codebase-analyzer: 관련 영역 서술 + 요구조건별 제약
+            W-->>H: analysis.json (constraints, regressionRisks)
+          else new
+            H->>H: analyze_codebase: 정규화 요청에서 초기 system context 를 결정적으로 생성
+          end
+        end
+
+        loop 시도 1..{{workflow.maxSrsRetries}} (workflow.maxSrsRetries)
+          H->>W: write_srs: 활성 URS + As-Is 관련 영역·기존 계약·채택된 결정 + 직전 bundle·지시
+          W-->>H: SRS documents + designDecisions (+ requirementConflicts)
+          rect rgba(220,38,38,0.10)
+            H->>G: validate_srs
+            alt 열린 requirementConflict (decisions.json 에 답이 없는 것)
+              H->>P: human_triage (WAITING_INPUT · SRS_REQUIREMENT_CONFLICT)
+              P-->>H: retry --target write_srs (요구 유지) 또는 write_urs (요구 변경)
+            else 보안 기본값 약화
+              H->>P: human_triage (SECURITY_WEAKENING_NEEDS_APPROVAL)
+              P-->>H: retry --approve-security
+            else URS 연결·스키마·계약 충돌·migration 누락·설계 결정 위반
+              G-->>H: FAIL
+              Note over H,W: 예산 안이면 write_srs, 다하면 human_triage (SRS_HARD_GATE_EXHAUSTED)
+            else PASS
+              G-->>H: 문서·design-decisions.md 렌더링
+            end
+          end
+          rect rgba(37,99,235,0.10)
+            alt review_srs 건너뜀{{skip:review_srs}}
+              H->>H: spec/srs 게시
+            else 심사
+              H->>R: review_srs: 요구 명세 60 + 설계 결정 40, finding 마다 aspect·repairTarget
+              R-->>H: score, findings
+              alt CRITICAL 없음, score {{workflow.srsScoreThreshold}} 이상 (workflow.srsScoreThreshold)
+                H->>H: spec/srs 게시 → analyze_change_impact
+              else repairTarget 이 human 인 CRITICAL
+                H->>P: human_triage (SRS_REVIEW_NEEDS_HUMAN)
+              else FAIL
+                Note over H,W: 가장 앞 repairTarget 으로 (write_urs 면 URS 예산, write_srs 면 SRS 예산 적용), 다하면 SRS_REVIEW_EXHAUSTED
+              end
+            end
+          end
+        end
+
+  - id: implementation
+    title: 그룹 5 · 계획·구현 (13–20)
+    description: 결정적 변경 영향 검증 → 테스트 계획 → manifest 확정(LLM 제안, npm 이 lockfile, gate) → npm ci → 테스트 우선 구현 → 추적성 hard gate → 구현 soft gate.
+    mermaid: |
+      sequenceDiagram
+        participant P as 사람
+        participant H as 하네스
+        participant G as 결정적 gate
+        participant W as LLM writer·implementer
+        participant R as implementation-reviewer
+        participant C as npm
+
+        rect rgba(220,38,38,0.10)
+          H->>G: analyze_change_impact: SRS plannedFiles + 설계 결정 dependency + import 그래프 → 편집 가능/금지 파일·회귀 위험·suite·newDependencies
+          alt 계획이 트리와 불일치 (예: 기존 계약 파일 미계획)
+            G-->>H: IMPACT_GATE_FAILED → write_srs (SRS 예산 {{workflow.maxSrsRetries}}회, 다하면 human_triage)
+          else PASS
+            G-->>H: change-plan.json
+          end
+        end
+
+        H->>W: write_test_plan (test-designer): TC + 실행 suite
+        W-->>H: test-plan.json (여기서 러너가 정해진다)
+
+        rect rgba(220,38,38,0.10)
+          loop 시도 1..{{workflow.maxManifestRetries}} (workflow.maxManifestRetries)
+            alt package.json 없음 → CREATE / dependencyChangeRequired → MODIFY
+              H->>W: prepare_project_manifest (manifest-writer): fields·scripts·dependencies delta
+              W-->>H: delta → 하네스가 병합해 package.json 기록
+            else KEEP
+              H->>H: LLM 호출 없음
+            end
+            H->>C: generate_lockfile: {{cmd:lockfile}} (KEEP 이고 lockfile 일치면 UNCHANGED)
+            alt ETARGET / E404 / ERESOLVE
+              C-->>H: UNRESOLVABLE → prepare_project_manifest 재시도
+            else 네트워크 등 환경 실패
+              H->>P: human_triage (LOCKFILE_GENERATION_FAILED · 예외 승인 불가)
+            else 생성
+              H->>G: validate_project_manifest: name/version/main·필수 script·electron·newDependencies·lockfile root 일치
+              alt FAIL
+                G-->>H: → prepare_project_manifest, 다하면 human_triage (MANIFEST_GATE_EXHAUSTED)
+              else PASS
+                G-->>H: fingerprint 기록
+              end
+            end
+          end
+        end
+
+        rect rgba(8,145,178,0.10)
+          alt install_dependencies 건너뜀{{skip:install_dependencies}}
+            H->>H: installStatus=SKIPPED
+          else
+            H->>C: install_dependencies: {{cmd:install}} (timeout {{timeoutsSeconds.install}}s)
+            alt lockfile 불일치
+              H->>C: {{cmd:lockfile}} 로 1회 재동기화 후 재시도
+            end
+            alt 실패
+              H->>P: human_triage (INSTALL_FAILED · 예외 승인 불가)
+            end
+          end
+        end
+
+        loop 구현 한 바퀴 = 계획 → 테스트 → 코드 → gate → 심사, 예산 {{workflow.maxImplementationRetries}}회 (workflow.maxImplementationRetries)
+          H->>W: implement_tests (test-implementer): 실패할 수 있는 테스트 추가·수정 (package.json 편집 금지)
+          alt 변경 JSON 검증 실패
+            W-->>H: 같은 노드 재시도 (예산 소모, 다하면 IMPLEMENTATION_EDIT_VALIDATION_EXHAUSTED)
+          else 편집 권한 거부 / 진전 없음
+            H->>P: human_triage (CODEX_EDIT_PERMISSION_DENIED / TEST_IMPLEMENTER_NO_PROGRESS)
+          end
+          rect rgba(8,145,178,0.10)
+            alt strictTdd={{workflow.strictTdd}} · true 이면
+              H->>C: verify_red_tests: 계획된 suite 실행, 제품 실패 1건 이상이어야 Red
+              alt suite 없음 / 인프라 실패 / 전부 통과
+                H->>P: human_triage (TDD_SUITE_NOT_CONFIGURED / TDD_RED_INFRASTRUCTURE_FAILED / TDD_RED_NOT_OBSERVED)
+              end
+            else false 이면
+              H->>H: tddRedStatus=SKIPPED
+            end
+          end
+          H->>W: implement_code (code-implementer): 테스트·SRS 기준 최소 변경, package.json 의존성만 import
+          rect rgba(220,38,38,0.10)
+            H->>G: validate_implementation: 추적성 matrix·테스트 구조·manifest fingerprint
+            alt PASS
+              G-->>H: traceability.json
+            else 위반
+              G-->>H: 계획 위반 → write_test_plan, manifest 변조 → prepare_project_manifest, 테스트 → implement_tests, 코드 → implement_code
+              Note over H,G: 같은 위반 집합이 {{workflow.maxSameFailureCount}}회를 넘으면 IMPLEMENTATION_HARD_GATE_REPEATED (workflow.maxSameFailureCount)
+            end
+          end
+          rect rgba(37,99,235,0.10)
+            alt review_implementation 건너뜀{{skip:review_implementation}}
+              H->>H: hard gate matrix 를 spec/traceability 에 게시
+            else 심사
+              H->>R: review_implementation: diff·변경 보고서·추적성 (package.json/lockfile 제외)
+              R-->>H: score, findings (repairTarget)
+              alt CRITICAL 없음, score {{workflow.implementationScoreThreshold}} 이상 (workflow.implementationScoreThreshold)
+                H->>H: → build_project
+              else human / 앞 stage 대상 CRITICAL
+                H->>P: human_triage (IMPLEMENTATION_REVIEW_NEEDS_HUMAN)
+              else FAIL
+                Note over H,W: repairTarget 별 지시 저장, 가장 앞 노드로 (write_test_plan / implement_tests / implement_code)
+              end
+            end
+          end
+        end
+
+  - id: verification
+    title: 그룹 6 · 실행 검증·인수 (21–27)
+    description: lint/build → 테스트 suite → 패키징 → 최종 증거 gate → As-Is 갱신 → 커밋 → 릴리스 노트. 여기 실패는 품질 예외로 우회할 수 없다.
+    mermaid: |
+      sequenceDiagram
+        participant P as 사람
+        participant H as 하네스
+        participant G as 결정적 gate
+        participant W as LLM
+        participant C as npm·git
+
+        rect rgba(8,145,178,0.10)
+          loop build 시도 1..{{workflow.maxBuildFixRetries}} (workflow.maxBuildFixRetries)
+            alt build_project 건너뜀{{skip:build_project}}
+              H->>H: buildStatus=SKIPPED
+            else
+              H->>C: lint: {{cmd:lint}} (script 없으면 LINT_CONFIG_INVALID)
+              H->>C: build: {{cmd:build}} (timeout {{timeoutsSeconds.build}}s)
+              alt 실패
+                C-->>H: → implement_code (같은 실패 {{workflow.maxSameFailureCount}}회 초과 또는 예산 소진이면 human_triage)
+              end
+            end
+          end
+        end
+
+        rect rgba(8,145,178,0.10)
+          loop test 시도 1..{{workflow.maxTestFixRetries}} (workflow.maxTestFixRetries)
+            alt run_tests 건너뜀{{skip:run_tests}}
+              H->>H: testStatus=SKIPPED
+            else
+              H->>C: run_tests: {{cmd:testUnit}} → {{cmd:testApi}} → {{cmd:testElectron}} → {{cmd:testUi}}
+              C-->>H: JUnit → 모든 계획 TC 에 매핑 (흔적 없는 TC 는 NOT_RUN)
+              alt 필수 suite 명령 없음
+                H->>P: human_triage (NO_TEST_SUITE_CONFIGURED)
+              else 제품 테스트 실패
+                H->>W: implement_code (실패 TC 별 사유 첨부)
+              else 테스트 환경 실패 (포트·fixture·브라우저)
+                H->>W: repair_test_infrastructure → implement_tests (예산 초과면 TEST_INFRA_EXHAUSTED)
+              else PASS
+                C-->>H: summary.json, traceability.md
+              end
+            end
+          end
+        end
+
+        rect rgba(8,145,178,0.10)
+          alt commands.package 있음
+            H->>C: package_project: {{cmd:package}}
+            alt 실패
+              H->>P: human_triage (PACKAGE_FAILED)
+            end
+          else 없음
+            H->>H: NOT_CONFIGURED
+          end
+        end
+
+        rect rgba(220,38,38,0.10)
+          H->>G: review_verification_evidence: 구현 gate·install·build·test·package 상태 + test summary·traceability 경로
+          alt 증거 불완전
+            H->>P: human_triage (VERIFICATION_EVIDENCE_INCOMPLETE)
+          else PASS
+            G-->>H: evidence-review.json
+          end
+        end
+
+        alt update_asis_baseline 건너뜀{{skip:update_asis_baseline}}
+          H->>H: spec/as-is 유지
+        else
+          H->>G: 인벤토리 재생성, 이번 설계 결정을 ADOPTED 로 흡수
+          opt asIs.narrativeRefresh={{asIs.narrativeRefresh}}
+            H->>W: codebase-analyzer: 이번 실행이 바꾼 모듈만 재서술
+          end
+        end
+
+        rect rgba(8,145,178,0.10)
+          alt git.autoCommit={{git.autoCommit}} 이 false 이거나 건너뜀{{skip:commit_changes}}
+            H->>H: 커밋 생략
+          else
+            H->>G: commit_changes 전제조건: URS/SRS/manifest/구현 gate PASS, install·build·test PASS 또는 명시적 skip
+            H->>G: 허용 경로(git.allowedPaths) + secret scan
+            alt 위반
+              H->>P: human_triage (COMMIT_PRECONDITION_FAILED / COMMIT_PATH_NOT_ALLOWED / SECRET_IN_DIFF / NOTHING_TO_COMMIT)
+            else
+              H->>C: git commit (대상 변경만)
+            end
+          end
+        end
+        H->>W: write_release_notes (release-note-writer){{skip:write_release_notes}}
+
+  - id: release
+    title: 그룹 7 · 배포 (28–29)
+    description: 사람 승인 → 승인 산출물 해시 재검증 → 배포 → smoke. request_deploy_approval 은 묻기만 하므로 재개 후 다시 실행돼도 배포하지 않는다.
+    mermaid: |
+      sequenceDiagram
+        participant P as 사람
+        participant H as 하네스
+        participant G as 결정적 gate
+        participant D as 배포 adapter
+
+        rect rgba(217,119,6,0.14)
+          alt deployment.enabled={{deployment.enabled}} 이 false 이거나 --env 없음 또는 건너뜀{{skip:request_deploy_approval}}
+            H->>H: deployApproval=NOT_REQUESTED → finalize_run (COMPLETED)
+          else
+            H->>P: request_deploy_approval: approval-request.json (commit SHA, artifact SHA-256, URS, test summary, 위험)
+            Note over P,H: 실행이 멈춘다 · WAITING_DEPLOY_APPROVAL · 종료 코드 10
+            alt harness approve --by ...
+              P-->>H: approved
+            else harness reject --reason ...
+              P-->>H: rejected → finalize_run (COMPLETED, 배포 없음)
+            end
+          end
+        end
+
+        rect rgba(220,38,38,0.10)
+          H->>G: verify_approved_artifact: 승인 시점 commit SHA·artifact 해시 == 현재 값
+          alt 불일치
+            G-->>H: APPROVAL_INVALIDATED → request_deploy_approval 로 다시
+          else 일치
+            G-->>H: OK
+          end
+        end
+
+        H->>D: execute_deploy: 승인·검증된 immutable artifact 만, ledger 로 중복 배포 방지
+        D-->>H: deployment record
+        rect rgba(8,145,178,0.10)
+          alt run_smoke_test 건너뜀{{skip:run_smoke_test}}
+            H->>H: SKIPPED
+          else
+            H->>D: run_smoke_test (timeout {{timeoutsSeconds.deploy}}s)
+            alt FAIL
+              H->>P: human_triage (SMOKE_TEST_FAILED · 자동 코드 수정 없음, 예외 승인 불가)
+            else PASS
+              D-->>H: COMPLETED
+            end
+          end
+        end
+        H->>H: finalize_run: run-summary.json
+
+  - id: control
+    title: 제어 · human_triage 와 재개
+    description: 어느 gate 든 예산이 다하거나 사람 결정이 필요하면 여기로 모인다. retry 는 RETRY_TARGETS 의 노드로만 갈 수 있고, 품질 예외는 build/test/install/lockfile/commit/smoke 실패에는 적용되지 않는다.
+    mermaid: |
+      sequenceDiagram
+        participant P as 사람
+        participant H as 하네스
+        participant N as 지정 노드
+
+        rect rgba(217,119,6,0.14)
+          H->>P: human_triage: triage.json (failureReason, 최근 finding, gate, 산출물 경로, 가능한 action)
+          Note over P,H: WAITING_TRIAGE 또는 WAITING_INPUT (모드 모호 · BLOCKING 질문 · 요구 충돌) · 종료 코드 10
+          alt harness triage --action retry --target 노드 [--instruction] [--answers-json] [--mode] [--approve-security] [--keep-attempts]
+            P-->>H: 결정은 decisions.json 에 SRC-DEC-nnn 으로 기록, attempts 초기화 (--keep-attempts 면 유지)
+            H->>N: RETRY_TARGETS 중 하나에서 재개 (initialize_run 이면 처음부터)
+          else harness triage --action approve_exception [--target 노드]
+            alt workflow.allowQualityExceptionApproval={{workflow.allowQualityExceptionApproval}} 이고 실패가 품질 예외 대상
+              H->>N: 기본 target install_dependencies 에서 재개
+            else build/lint/test/install/lockfile/manifest/secret/commit/smoke 실패
+              H->>H: EXCEPTION_NOT_ALLOWED → finalize_run (CANCELED)
+            end
+          else harness triage --action abort
+            H->>H: finalize_run (CANCELED)
+          end
+        end
+
+        Note over P,H: 프로세스가 죽었을 때 (CRASHED / STALLED)
+        P->>H: harness resume [--from 노드]
+        alt --from 없음
+          H->>N: checkpoint 의 다음 노드부터
+        else --from 노드
+          H->>N: RETRY_TARGETS 의 노드부터 다시
+        end
+        P->>H: harness cancel --reason ... → finalize_run (CANCELED), 프로젝트 잠금 해제

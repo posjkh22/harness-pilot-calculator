@@ -1,0 +1,836 @@
+{
+  "documents": [
+    {
+      "ursId": "URS-001",
+      "title": "계산기 앱 기술 기반",
+      "summary": "계산기 앱을 Node.js와 Electron으로 구성하고 HTML과 CSS를 사용해 사용자 화면을 제공한다.",
+      "affectedAreas": [
+        "electron/main",
+        "electron/preload",
+        "renderer/ui",
+        "build",
+        "test-infra"
+      ],
+      "specs": [
+        {
+          "id": "SRS-URS-001-01",
+          "component": "build",
+          "statement": "애플리케이션은 Node.js 실행 환경과 Electron 데스크톱 런타임을 사용하며, renderer UI는 HTML과 CSS 파일로 구현해야 한다.",
+          "rationale": "원본 요구조건이 구현 기술을 Node.js, Electron, HTML, CSS로 제한한다.",
+          "interfaces": [
+            {
+              "type": "MODULE",
+              "name": "electron/main.js",
+              "direction": "INTERNAL",
+              "request": "Electron app lifecycle and BrowserWindow initialization",
+              "response": "A running Electron application window loading the HTML renderer",
+              "errors": [
+                "Application startup failure must be surfaced to the process log."
+              ],
+              "permissions": "Main-process-only lifecycle and window creation.",
+              "applicable": true
+            },
+            {
+              "type": "MODULE",
+              "name": "ui/index.html",
+              "direction": "INTERNAL",
+              "request": "Static HTML document containing calculator UI elements",
+              "response": "Rendered calculator document",
+              "errors": [
+                "Malformed or missing document must fail the UI integration test."
+              ],
+              "permissions": "Renderer DOM access only; no Node.js APIs.",
+              "applicable": true
+            }
+          ],
+          "dataModel": [
+            "The implementation consists of JavaScript source, HTML markup, and CSS styles; no external persistence model is required."
+          ],
+          "errorHandling": [
+            "Startup and resource-loading errors are logged by the Electron main process and cause the integration test to fail.",
+            "The renderer must not silently replace missing required UI elements."
+          ],
+          "security": [
+            "BrowserWindow must use contextIsolation: true, nodeIntegration: false, and sandbox: true.",
+            "Renderer code must use web APIs only and must not access Node.js or filesystem APIs directly.",
+            "Only local packaged HTML resources are loaded."
+          ],
+          "performance": [
+            "The initial window should load local resources without network requests.",
+            "Calculator interactions should execute synchronously in the renderer for immediate feedback."
+          ],
+          "verifies": [
+            "AC-URS-001-01"
+          ],
+          "plannedFiles": [
+            "package.json",
+            "electron/main.js",
+            "electron/preload.js",
+            "ui/index.html",
+            "ui/styles.css",
+            "ui/calculator.js",
+            "tests/calculator.test.js",
+            "tests/electron.integration.test.js"
+          ],
+          "testHooks": [
+            "Expose stable data-testid attributes for the display and every required button.",
+            "Add a package review test that verifies Electron is configured and HTML/CSS assets exist.",
+            "Launch the packaged window in an Electron integration test and assert it loads the local renderer."
+          ],
+          "verificationStrategy": "ELECTRON_INTEGRATION",
+          "reviewOnlyJustification": ""
+        }
+      ],
+      "migration": [
+        "신규 시스템이므로 기존 IPC, HTTP, 저장 포맷과의 호환성 변경은 없다.",
+        "신규 package.json에 정의된 Electron 실행 명령과 파일 경로를 최초 배포 산출물에 포함한다."
+      ],
+      "securityDecisions": [
+        {
+          "setting": "contextIsolation",
+          "value": "true",
+          "weakensDefault": false,
+          "justification": "Renderer와 preload/main의 전역 실행 컨텍스트를 분리한다."
+        },
+        {
+          "setting": "nodeIntegration",
+          "value": "false",
+          "weakensDefault": false,
+          "justification": "Renderer에서 Node.js API가 직접 사용되지 않도록 한다."
+        },
+        {
+          "setting": "sandbox",
+          "value": "true",
+          "weakensDefault": false,
+          "justification": "Renderer 권한을 최소화하고 웹 콘텐츠 실행을 격리한다."
+        }
+      ],
+      "implementationOrder": [
+        "package.json에 Electron 실행 스크립트와 개발 의존성을 정의한다.",
+        "main process에서 BrowserWindow를 생성하고 보안 기본값으로 ui/index.html을 로드한다.",
+        "HTML과 CSS로 계산기 화면 골격을 구현한다.",
+        "renderer JavaScript를 연결하고 Electron 통합 테스트로 기술 구성을 검증한다."
+      ],
+      "risks": [
+        "Electron 버전과 지원 Node.js 버전의 호환성이 배포 환경에서 확인되어야 한다.",
+        "렌더러에 Node.js API를 추가하면 보안 경계와 기술 제약을 동시에 위반할 수 있다."
+      ],
+      "outOfScope": [
+        "지정 기술 외의 UI 프레임워크, 상태관리 라이브러리, HTTP 서버 및 외부 저장소",
+        "키보드 입력과 시각적 디자인 세부사항"
+      ],
+      "openDecisions": []
+    },
+    {
+      "ursId": "URS-002",
+      "title": "계산기 입력 및 제어 버튼 제공",
+      "summary": "계산기 화면에 숫자 10개, 사칙연산 4개, 등호 1개, 초기화 1개의 버튼을 제공한다.",
+      "affectedAreas": [
+        "renderer/ui"
+      ],
+      "specs": [
+        {
+          "id": "SRS-URS-002-01",
+          "component": "renderer/ui",
+          "statement": "계산기 화면은 계산기 화면은 숫자 0부터 9까지 각각 하나씩, 더하기·빼기·곱하기·나누기 버튼, 등호 버튼, 초기화 버튼을 제공해야 하며 각 버튼은 고유한 접근 가능한 이름과 동작 식별자를 가져야 한다.",
+          "rationale": "사용자가 계산에 필요한 모든 입력 및 제어 요소를 확인하고 선택할 수 있어야 한다.",
+          "interfaces": [
+            {
+              "type": "MODULE",
+              "name": "Calculator UI button set",
+              "direction": "INTERNAL",
+              "request": "DOM click events for digit, operator, equals, and clear buttons",
+              "response": "The corresponding calculator action is dispatched to the renderer state machine",
+              "errors": [
+                "Unknown action identifiers are rejected and logged during development.",
+                "Missing required buttons fail the UI integration test."
+              ],
+              "permissions": "Renderer-local event handling; no privileged API access.",
+              "applicable": true
+            }
+          ],
+          "dataModel": [
+            "Digit actions: 0 through 9.",
+            "Operator actions: +, -, *, /.",
+            "Control actions: = and clear.",
+            "Each button has a stable data-testid and accessible label."
+          ],
+          "errorHandling": [
+            "A missing or duplicated required button is a test failure rather than silently ignored.",
+            "Unexpected action values do not mutate calculator state."
+          ],
+          "security": [
+            "Button handlers remain in the isolated renderer context.",
+            "No button action evaluates arbitrary JavaScript or accepts executable input."
+          ],
+          "performance": [
+            "All 16 required buttons are present after the initial local document load.",
+            "Click handling is local and completes within the same renderer event cycle."
+          ],
+          "verifies": [
+            "AC-URS-002-01"
+          ],
+          "plannedFiles": [
+            "ui/index.html",
+            "ui/styles.css",
+            "ui/calculator.js",
+            "tests/calculator.test.js",
+            "tests/electron.integration.test.js"
+          ],
+          "testHooks": [
+            "Use data-testid values digit-0 through digit-9, operator-add, operator-subtract, operator-multiply, operator-divide, equals, and clear.",
+            "Provide accessible button text or aria-label values matching the action.",
+            "Count and identify all required buttons in the UI integration test."
+          ],
+          "verificationStrategy": "UI_INTEGRATION",
+          "reviewOnlyJustification": ""
+        }
+      ],
+      "migration": [
+        "신규 UI이므로 기존 화면 또는 DOM 계약과의 호환성 변경은 없다.",
+        "버튼 식별자는 테스트와 자동화의 계약으로 취급하고 이후 변경 시 호환성을 유지한다."
+      ],
+      "securityDecisions": [
+        {
+          "setting": "renderer privileged access",
+          "value": "none; calculator controls use renderer-local DOM events",
+          "weakensDefault": false,
+          "justification": "IPC나 Node.js 권한 없이 요구된 입력 동작을 구현한다."
+        }
+      ],
+      "implementationOrder": [
+        "HTML에 display와 16개 버튼을 선언한다.",
+        "각 버튼에 고유한 data-testid와 접근 가능한 텍스트를 부여한다.",
+        "renderer 이벤트 위임 또는 개별 핸들러를 연결한다.",
+        "UI 통합 테스트에서 버튼 수, 종류, 식별자를 검증한다."
+      ],
+      "risks": [
+        "버튼 텍스트만 변경하면 자동화 식별자가 깨질 수 있으므로 data-testid를 안정적으로 유지해야 한다.",
+        "곱하기와 나누기 기호의 표시 문자가 내부 연산자 값과 혼동되지 않도록 별도 매핑을 둔다."
+      ],
+      "outOfScope": [
+        "버튼의 시각적 디자인, 크기, 배치",
+        "키보드 입력, 마우스 이외의 입력 방식",
+        "계산기 이외의 UI 화면"
+      ],
+      "openDecisions": []
+    },
+    {
+      "ursId": "URS-003",
+      "title": "숫자 입력값 표시",
+      "summary": "숫자 버튼을 누르면 현재 입력 중인 값이 화면 상단 디스플레이에 표시된다.",
+      "affectedAreas": [
+        "renderer/ui"
+      ],
+      "specs": [
+        {
+          "id": "SRS-URS-003-01",
+          "component": "renderer/ui",
+          "statement": "숫자 버튼 클릭 시 renderer 상태의 현재 입력값에 해당 숫자를 반영하고, 화면 상단 display를 현재 입력 중인 값으로 즉시 갱신해야 한다.",
+          "rationale": "사용자가 입력 중인 숫자를 확인할 수 있어야 한다.",
+          "interfaces": [
+            {
+              "type": "MODULE",
+              "name": "calculatorState.handleDigit",
+              "direction": "INTERNAL",
+              "request": "digit: integer in the range 0..9",
+              "response": "Updated display string representing the current input",
+              "errors": [
+                "Non-integer or out-of-range digits are rejected without state mutation."
+              ],
+              "permissions": "Renderer-local pure/state transition function.",
+              "applicable": true
+            },
+            {
+              "type": "EVENT",
+              "name": "digit-click",
+              "direction": "INTERNAL",
+              "request": "DOM click event from a digit button",
+              "response": "Display text is updated to include the selected digit",
+              "errors": [
+                "Missing display element is reported as a test failure."
+              ],
+              "permissions": "Renderer-local event only.",
+              "applicable": true
+            }
+          ],
+          "dataModel": [
+            "displayValue: string, initialized to \"0\".",
+            "currentInput: string, initialized to \"0\".",
+            "Digits are appended according to the calculator input state; the exact multi-digit formatting remains implementation-defined unless constrained by the acceptance criterion."
+          ],
+          "errorHandling": [
+            "Invalid digit events are ignored with a development diagnostic and do not corrupt displayValue.",
+            "A missing display element is surfaced as an initialization error."
+          ],
+          "security": [
+            "Digit values originate from a fixed allowlist of button actions; arbitrary DOM text is not evaluated.",
+            "Display updates use textContent rather than innerHTML."
+          ],
+          "performance": [
+            "A digit click updates the display in one renderer event cycle.",
+            "No disk or network operation occurs for numeric input."
+          ],
+          "verifies": [
+            "AC-URS-003-01"
+          ],
+          "plannedFiles": [
+            "ui/index.html",
+            "ui/calculator.js",
+            "tests/calculator.test.js",
+            "tests/electron.integration.test.js"
+          ],
+          "testHooks": [
+            "Expose display as data-testid=\"display\".",
+            "Unit-test one or more digit transitions and verify the resulting display string contains the pressed digit.",
+            "UI-test clicking a digit button and reading the display text."
+          ],
+          "verificationStrategy": "UI_INTEGRATION",
+          "reviewOnlyJustification": ""
+        }
+      ],
+      "migration": [
+        "신규 renderer 상태이므로 기존 표시 포맷과의 호환성 변경은 없다.",
+        "표시 요소의 data-testid와 초기값 0을 테스트 계약으로 유지한다."
+      ],
+      "securityDecisions": [
+        {
+          "setting": "display rendering",
+          "value": "textContent only",
+          "weakensDefault": false,
+          "justification": "사용자 입력을 HTML로 해석하지 않아 DOM injection 가능성을 줄인다."
+        }
+      ],
+      "implementationOrder": [
+        "초기 display와 calculator state를 정의한다.",
+        "숫자 버튼 입력 검증과 상태 전이를 구현한다.",
+        "display를 textContent로 갱신한다.",
+        "단위 테스트와 Electron UI 통합 테스트를 추가한다."
+      ],
+      "risks": [
+        "여러 숫자 입력의 최대 자릿수와 표시 형식이 요구조건에서 정해지지 않아 후속 요구가 상태 모델에 영향을 줄 수 있다.",
+        "계산 결과 직후 숫자 입력의 동작은 별도 요구가 없어 명시하지 않는다."
+      ],
+      "outOfScope": [
+        "여러 숫자 입력 시 최대 자릿수와 표시 형식",
+        "키보드 숫자 입력",
+        "소수점 입력"
+      ],
+      "openDecisions": [
+        "계산 결과 직후 숫자 버튼을 누를 때 기존 결과에 이어 붙일지 새 입력으로 시작할지는 후속 요구에서 결정해야 한다."
+      ]
+    },
+    {
+      "ursId": "URS-004",
+      "title": "사칙연산 결과 표시",
+      "summary": "두 숫자와 하나의 사칙연산자를 입력하고 등호를 누르면 해당 계산 결과를 디스플레이에 표시한다.",
+      "affectedAreas": [
+        "renderer/ui"
+      ],
+      "specs": [
+        {
+          "id": "SRS-URS-004-01",
+          "component": "renderer/ui",
+          "statement": "renderer는 첫 번째 숫자, 하나의 사칙연산자, 두 번째 숫자를 순서대로 수집하고 등호 클릭 시 해당 두 피연산자와 연산자를 계산하여 결과를 display에 표시해야 한다.",
+          "rationale": "기본 사칙연산의 결과를 사용자가 확인할 수 있어야 한다.",
+          "interfaces": [
+            {
+              "type": "MODULE",
+              "name": "calculatorState.evaluate",
+              "direction": "INTERNAL",
+              "request": "{ left: numeric input, operator: \"+\"|\"-\"|\"*\"|\"/\", right: numeric input }",
+              "response": "Numeric result formatted as a display string",
+              "errors": [
+                "Incomplete expression is rejected.",
+                "Unknown operator is rejected.",
+                "Division with a zero right operand produces the Error state defined by URS-005."
+              ],
+              "permissions": "Renderer-local calculation function; no privileged access.",
+              "applicable": true
+            },
+            {
+              "type": "EVENT",
+              "name": "equals-click",
+              "direction": "INTERNAL",
+              "request": "DOM click event from the equals button",
+              "response": "Display is updated to the computed result or Error",
+              "errors": [
+                "Invalid expression must not produce a numeric result.",
+                "Calculation failures transition to a visible error state."
+              ],
+              "permissions": "Renderer-local event only.",
+              "applicable": true
+            }
+          ],
+          "dataModel": [
+            "Expression state: left operand, operator, right operand, and evaluation status.",
+            "Supported operators are exactly +, -, *, /.",
+            "Results are displayed as text; complex precedence, decimals, and rounding are not required by this requirement."
+          ],
+          "errorHandling": [
+            "The equals action validates that both operands and exactly one supported operator are present.",
+            "Invalid or incomplete input is surfaced through the display error state and does not throw an uncaught renderer exception.",
+            "A zero divisor is handled before numeric division and produces exactly \"Error\"."
+          ],
+          "security": [
+            "Calculation uses explicit operator dispatch rather than eval or Function.",
+            "Operands are parsed from controlled numeric state, not executed as code."
+          ],
+          "performance": [
+            "Evaluation is an in-memory operation with no I/O.",
+            "The display update occurs in the same user interaction cycle."
+          ],
+          "verifies": [
+            "AC-URS-004-01"
+          ],
+          "plannedFiles": [
+            "ui/calculator.js",
+            "tests/calculator.test.js",
+            "tests/calculator.ui.test.js"
+          ],
+          "testHooks": [
+            "Export or isolate a calculator evaluation function for unit tests without exposing privileged APIs.",
+            "Provide stable equals and display test identifiers.",
+            "Cover all four operators with representative two-operand UI flows."
+          ],
+          "verificationStrategy": "UNIT",
+          "reviewOnlyJustification": ""
+        }
+      ],
+      "migration": [
+        "신규 계산 상태 모델이므로 기존 계산 API 또는 저장 데이터와의 호환성 변경은 없다.",
+        "연산자 처리 계약은 renderer 내부에 한정하며 외부 IPC/HTTP 계약을 만들지 않는다."
+      ],
+      "securityDecisions": [
+        {
+          "setting": "expression evaluation",
+          "value": "explicit operator dispatch; eval and Function prohibited",
+          "weakensDefault": false,
+          "justification": "입력값이 코드로 실행되는 경로를 제거한다."
+        }
+      ],
+      "implementationOrder": [
+        "입력 상태에 두 피연산자와 연산자를 저장한다.",
+        "사칙연산별 명시적 계산 분기를 구현한다.",
+        "등호 처리에서 입력 완전성을 검증한다.",
+        "계산 결과 표시와 단위/UI 테스트를 구현한다."
+      ],
+      "risks": [
+        "소수점, 반올림, 큰 수 및 표시 형식은 요구에서 제외되어 결과 표현에 후속 결정이 필요할 수 있다.",
+        "연속 계산과 연산자 변경 동작은 요구되지 않아 구현 범위를 확장하면 상태 전이가 복잡해질 수 있다."
+      ],
+      "outOfScope": [
+        "연산자 우선순위가 필요한 복합 수식",
+        "소수점 입력, 반올림 및 결과 표시 형식",
+        "메모리 연산과 연속 계산"
+      ],
+      "openDecisions": [
+        "결과의 숫자 형식과 부동소수점 정밀도 정책은 후속 요구에서 결정해야 한다."
+      ]
+    },
+    {
+      "ursId": "URS-005",
+      "title": "0으로 나누기 오류 표시",
+      "summary": "제수가 0인 모든 나누기 계산에서 피제수와 무관하게 결과 대신 정확히 Error를 표시한다.",
+      "affectedAreas": [
+        "renderer/ui"
+      ],
+      "specs": [
+        {
+          "id": "SRS-URS-005-01",
+          "component": "renderer/ui",
+          "statement": "나누기 연산의 오른쪽 피연산자가 숫자 0이면 피제수가 0인지 여부와 관계없이 실제 나눗셈을 수행하지 않고 display에 대소문자와 철자가 정확히 \"Error\"를 표시해야 한다.",
+          "rationale": "0 ÷ 0을 포함한 모든 0 나누기를 동일하게 처리해야 한다.",
+          "interfaces": [
+            {
+              "type": "MODULE",
+              "name": "calculatorState.evaluateDivision",
+              "direction": "INTERNAL",
+              "request": "{ dividend: numeric input, divisor: numeric input }",
+              "response": "\"Error\" when divisor === 0; otherwise the division result",
+              "errors": [
+                "Non-numeric operands are rejected.",
+                "The zero-divisor branch must prevent numeric division."
+              ],
+              "permissions": "Renderer-local calculation function.",
+              "applicable": true
+            },
+            {
+              "type": "EVENT",
+              "name": "zero-division-result",
+              "direction": "INTERNAL",
+              "request": "Equals action with operator \"/\" and right operand 0",
+              "response": "Display text exactly \"Error\" and numeric result is absent",
+              "errors": [
+                "Any numeric display for a zero divisor is a test failure."
+              ],
+              "permissions": "Renderer-local event only.",
+              "applicable": true
+            }
+          ],
+          "dataModel": [
+            "dividend: numeric value, including 0.",
+            "divisor: numeric value.",
+            "error display sentinel: exact string \"Error\".",
+            "Evaluation status distinguishes error from numeric result."
+          ],
+          "errorHandling": [
+            "Check divisor === 0 before division.",
+            "Set the display to exactly \"Error\" for 0 ÷ 0 and nonzero ÷ 0.",
+            "Do not expose Infinity, NaN, or a numeric result for a zero divisor."
+          ],
+          "security": [
+            "Use explicit numeric comparison and operator dispatch; never evaluate a constructed expression.",
+            "The fixed Error sentinel is assigned through textContent."
+          ],
+          "performance": [
+            "Zero-divisor detection is an in-memory branch completed during the equals event.",
+            "No retry, persistence, or external service is involved."
+          ],
+          "verifies": [
+            "AC-URS-005-01"
+          ],
+          "plannedFiles": [
+            "ui/calculator.js",
+            "tests/calculator.test.js",
+            "tests/calculator.ui.test.js"
+          ],
+          "testHooks": [
+            "Unit-test both 0 ÷ 0 and nonzero ÷ 0.",
+            "UI-test the display for exact text equality with \"Error\" and assert it is not Infinity or NaN.",
+            "Expose the display through data-testid=\"display\"."
+          ],
+          "verificationStrategy": "UNIT",
+          "reviewOnlyJustification": ""
+        }
+      ],
+      "migration": [
+        "신규 계산 동작이므로 기존 오류 표시 계약과의 호환성 변경은 없다.",
+        "Error 문자열은 수용 기준의 외부 관찰 계약으로 유지한다."
+      ],
+      "securityDecisions": [
+        {
+          "setting": "zero division handling",
+          "value": "explicit divisor-zero guard before division",
+          "weakensDefault": false,
+          "justification": "런타임 Infinity/NaN 노출과 모호한 오류 처리를 방지한다."
+        }
+      ],
+      "implementationOrder": [
+        "나눗셈 계산 전에 제수의 숫자 0 여부를 검사한다.",
+        "Error 상태와 정확한 표시 문자열을 구현한다.",
+        "0 ÷ 0 및 비영 피제수 ÷ 0 단위/UI 테스트를 추가한다."
+      ],
+      "risks": [
+        "후속 요구에서 오류 해제 또는 오류 이후 입력 동작을 정의하면 상태 전이 변경이 필요하다.",
+        "숫자 파싱 정책이 바뀌면 0 판정 경계도 함께 재검증해야 한다."
+      ],
+      "outOfScope": [
+        "0으로 나누기 이후의 추가 입력 동작",
+        "오류 해제 UX",
+        "NaN, Infinity 등 기타 비정상 수식의 상세 표시 정책"
+      ],
+      "openDecisions": []
+    },
+    {
+      "ursId": "URS-006",
+      "title": "계산기 초기화",
+      "summary": "초기화 버튼을 누르면 display에 정확히 0을 표시한다.",
+      "affectedAreas": [
+        "renderer/ui"
+      ],
+      "specs": [
+        {
+          "id": "SRS-URS-006-01",
+          "component": "renderer/ui",
+          "statement": "초기화 버튼 클릭 시 계산기의 표시 상태를 초기 표시값으로 되돌리고 display에 정확히 숫자 0을 표시해야 한다.",
+          "rationale": "사용자가 표시된 입력값, 계산 결과 또는 Error를 기본 표시 상태로 되돌릴 수 있어야 한다.",
+          "interfaces": [
+            {
+              "type": "MODULE",
+              "name": "calculatorState.reset",
+              "direction": "INTERNAL",
+              "request": "No payload",
+              "response": "State reset with display value \"0\"",
+              "errors": [
+                "Missing display element is reported as a renderer initialization error."
+              ],
+              "permissions": "Renderer-local state transition.",
+              "applicable": true
+            },
+            {
+              "type": "EVENT",
+              "name": "clear-click",
+              "direction": "INTERNAL",
+              "request": "DOM click event from the clear button",
+              "response": "Display text exactly \"0\"",
+              "errors": [
+                "Reset must not leave the prior numeric or Error display visible."
+              ],
+              "permissions": "Renderer-local event only.",
+              "applicable": true
+            }
+          ],
+          "dataModel": [
+            "Initial/reset displayValue: string \"0\".",
+            "Reset clears the active expression state used for subsequent calculations.",
+            "The acceptance contract observes the display value; internal state reset is included to prevent stale operands."
+          ],
+          "errorHandling": [
+            "Reset is deterministic and does not throw for any prior display state.",
+            "If the display element is unavailable, initialization/test failure is surfaced rather than silently ignored."
+          ],
+          "security": [
+            "Reset uses a fixed constant and does not process executable or HTML input.",
+            "The handler remains renderer-local."
+          ],
+          "performance": [
+            "Reset performs only in-memory state assignment and one display update.",
+            "The display changes in the same click event cycle."
+          ],
+          "verifies": [
+            "AC-URS-006-01"
+          ],
+          "plannedFiles": [
+            "ui/calculator.js",
+            "tests/calculator.test.js",
+            "tests/calculator.ui.test.js"
+          ],
+          "testHooks": [
+            "Expose clear as data-testid=\"clear\" and display as data-testid=\"display\".",
+            "UI-test reset from a numeric value, a calculated result, and Error.",
+            "Unit-test that reset removes stale expression state as well as setting display to 0."
+          ],
+          "verificationStrategy": "UI_INTEGRATION",
+          "reviewOnlyJustification": ""
+        }
+      ],
+      "migration": [
+        "신규 상태 모델이므로 기존 reset API 또는 저장 데이터와의 호환성 변경은 없다.",
+        "clear 버튼 식별자와 초기 표시값 0을 자동화 계약으로 유지한다."
+      ],
+      "securityDecisions": [
+        {
+          "setting": "reset behavior",
+          "value": "renderer-local deterministic state reset",
+          "weakensDefault": false,
+          "justification": "권한 있는 API 없이 안전하게 초기화할 수 있다."
+        }
+      ],
+      "implementationOrder": [
+        "초기 상태와 reset transition을 정의한다.",
+        "clear 버튼에 reset handler를 연결한다.",
+        "display를 정확히 0으로 갱신한다.",
+        "숫자, 계산 결과, Error 상태에서의 통합 테스트를 작성한다."
+      ],
+      "risks": [
+        "URS-006의 수용 기준은 표시값을 명시하지만 내부 연산 상태 초기화 범위는 별도 결정이 필요하다.",
+        "후속 요구가 undo/history를 추가하면 단순 reset 모델을 확장해야 한다."
+      ],
+      "outOfScope": [
+        "초기화 시 이력, 메모리, undo 상태를 보존하거나 복구하는 기능",
+        "초기화 후 추가 입력의 상세 UX",
+        "키보드 단축키"
+      ],
+      "openDecisions": [
+        "초기화 이후 내부 계산 이력이나 메모리 기능을 유지할지 여부는 후속 요구에서 결정해야 한다."
+      ]
+    }
+  ],
+  "designDecisions": [
+    {
+      "id": "DD-001",
+      "topic": "Electron runtime and application structure",
+      "kind": "TECHNOLOGY",
+      "choice": "Electron ^39 as the desktop runtime with Node.js main process and vanilla HTML/CSS/JavaScript renderer",
+      "alternatives": [
+        "A browser-only Node.js application",
+        "A different desktop framework",
+        "A renderer UI framework such as React"
+      ],
+      "rationale": "URS-001 explicitly requires Node.js and Electron, and vanilla web assets satisfy the HTML/CSS requirement without introducing an unrequested framework.",
+      "appliesTo": [
+        "SRS-URS-001-01",
+        "SRS-URS-002-01",
+        "SRS-URS-003-01",
+        "SRS-URS-004-01",
+        "SRS-URS-005-01",
+        "SRS-URS-006-01"
+      ],
+      "dependency": {
+        "name": "electron",
+        "versionRange": "^39.0.0",
+        "dev": true,
+        "reason": "Provides the required Electron desktop runtime and development launch command."
+      },
+      "supersedes": ""
+    },
+    {
+      "id": "DD-002",
+      "topic": "Calculator execution location",
+      "kind": "ARCHITECTURE",
+      "choice": "Run calculator state transitions and arithmetic entirely in the renderer process; use the main process only for window lifecycle",
+      "alternatives": [
+        "Move arithmetic into the main process over IPC",
+        "Run arithmetic in a worker",
+        "Use an external HTTP service"
+      ],
+      "rationale": "The calculator has no privileged data or I/O needs, so renderer-local synchronous state transitions minimize complexity and latency while preserving the Electron security boundary.",
+      "appliesTo": [
+        "SRS-URS-002-01",
+        "SRS-URS-003-01",
+        "SRS-URS-004-01",
+        "SRS-URS-005-01",
+        "SRS-URS-006-01"
+      ],
+      "dependency": null,
+      "supersedes": ""
+    },
+    {
+      "id": "DD-003",
+      "topic": "Communication mechanism",
+      "kind": "INTERFACE",
+      "choice": "No IPC or HTTP API for calculator operations; DOM events and internal modules are used",
+      "alternatives": [
+        "Expose calculator operations through Electron IPC",
+        "Expose a localhost HTTP API",
+        "Use preload methods for every button action"
+      ],
+      "rationale": "The requirements are local UI interactions and do not require main-process privileges or external clients. Avoiding unnecessary IPC and HTTP surfaces reduces attack surface and contract overhead.",
+      "appliesTo": [
+        "SRS-URS-002-01",
+        "SRS-URS-003-01",
+        "SRS-URS-004-01",
+        "SRS-URS-005-01",
+        "SRS-URS-006-01"
+      ],
+      "dependency": null,
+      "supersedes": ""
+    },
+    {
+      "id": "DD-004",
+      "topic": "Persistence and storage",
+      "kind": "DATA",
+      "choice": "No persistent storage; calculator state is in-memory and reset on application reload",
+      "alternatives": [
+        "Persist state in a JSON file under userData",
+        "Use SQLite",
+        "Persist state through a remote service"
+      ],
+      "rationale": "No requirement asks for history, settings, or recovery across launches. Avoiding storage prevents unnecessary sensitive-data retention and migration obligations.",
+      "appliesTo": [
+        "SRS-URS-003-01",
+        "SRS-URS-004-01",
+        "SRS-URS-005-01",
+        "SRS-URS-006-01"
+      ],
+      "dependency": null,
+      "supersedes": ""
+    },
+    {
+      "id": "DD-005",
+      "topic": "Synchronous versus asynchronous processing",
+      "kind": "ARCHITECTURE",
+      "choice": "Synchronous in-memory state transitions and arithmetic in renderer event handlers",
+      "alternatives": [
+        "Asynchronous IPC round trips",
+        "Worker-based asynchronous evaluation",
+        "HTTP request/response evaluation"
+      ],
+      "rationale": "All required operations are small and deterministic. Synchronous processing makes display updates immediate and avoids loading, retry, timeout, and duplicate-request concerns.",
+      "appliesTo": [
+        "SRS-URS-003-01",
+        "SRS-URS-004-01",
+        "SRS-URS-005-01",
+        "SRS-URS-006-01"
+      ],
+      "dependency": null,
+      "supersedes": ""
+    },
+    {
+      "id": "DD-006",
+      "topic": "Electron security configuration",
+      "kind": "SECURITY",
+      "choice": "BrowserWindow uses contextIsolation: true, nodeIntegration: false, and sandbox: true; preload exposes no calculator API",
+      "alternatives": [
+        "Enable nodeIntegration in the renderer",
+        "Disable context isolation",
+        "Expose calculator operations through a broad preload bridge"
+      ],
+      "rationale": "The renderer needs only DOM APIs, so the strongest Electron defaults can be retained without weakening security.",
+      "appliesTo": [
+        "SRS-URS-001-01",
+        "SRS-URS-002-01",
+        "SRS-URS-003-01",
+        "SRS-URS-004-01",
+        "SRS-URS-005-01",
+        "SRS-URS-006-01"
+      ],
+      "dependency": null,
+      "supersedes": ""
+    },
+    {
+      "id": "DD-007",
+      "topic": "Testing strategy",
+      "kind": "TESTING",
+      "choice": "Use Node.js built-in node:test for calculator unit tests and Electron integration tests for the packaged UI; use stable data-testid hooks",
+      "alternatives": [
+        "Manual-only verification",
+        "A third-party test framework",
+        "HTTP contract tests"
+      ],
+      "rationale": "The test strategy verifies pure state transitions quickly and validates the real Electron renderer without adding an unrequested test dependency.",
+      "appliesTo": [
+        "SRS-URS-001-01",
+        "SRS-URS-002-01",
+        "SRS-URS-003-01",
+        "SRS-URS-004-01",
+        "SRS-URS-005-01",
+        "SRS-URS-006-01"
+      ],
+      "dependency": null,
+      "supersedes": ""
+    },
+    {
+      "id": "DD-008",
+      "topic": "Package and deployment configuration",
+      "kind": "PROCESS",
+      "choice": "Define package.json scripts for start and test, package the Electron application with local HTML/CSS/JavaScript assets, and inject environment-specific values only through build/launcher configuration",
+      "alternatives": [
+        "Run from an ad hoc source command without package metadata",
+        "Bundle a server and external runtime",
+        "Store environment secrets in renderer source"
+      ],
+      "rationale": "The repository has no existing package manifest or deployment contract. Explicit scripts and local assets make build, pre-deployment validation, and rollback to the prior packaged artifact reproducible. This application has no secrets or environment-specific external integration.",
+      "appliesTo": [
+        "SRS-URS-001-01"
+      ],
+      "dependency": null,
+      "supersedes": ""
+    },
+    {
+      "id": "DD-009",
+      "topic": "Migration and compatibility",
+      "kind": "MIGRATION",
+      "choice": "Treat the application as a new system with no legacy IPC, HTTP, or storage contracts; preserve stable UI test identifiers after initial release",
+      "alternatives": [
+        "Introduce compatibility adapters for nonexistent interfaces",
+        "Create a versioned storage migration before persistence exists",
+        "Allow identifiers to change freely"
+      ],
+      "rationale": "The As-Is baseline contains no modules, interfaces, dependencies, tests, or storage. There is nothing to migrate, but UI automation identifiers become the first compatibility surface.",
+      "appliesTo": [
+        "SRS-URS-001-01",
+        "SRS-URS-002-01",
+        "SRS-URS-003-01",
+        "SRS-URS-004-01",
+        "SRS-URS-005-01",
+        "SRS-URS-006-01"
+      ],
+      "dependency": null,
+      "supersedes": ""
+    }
+  ],
+  "requirementConflicts": [],
+  "notes": "신규 구축(SI) 기준으로 작성했다. 사용자와 Electron 애플리케이션 사이의 신뢰 경계는 renderer와 main/preload 사이에 두며, 현재 요구사항에는 외부 시스템 연동, 인증, 권한 위임, HTTP API, 영속 저장이 없다. 따라서 timeout, retry/backoff, 중복 요청 멱등성, 외부 장애 격리 및 fallback은 적용 대상이 아니며 해당 범위를 명시적으로 제외했다. 배포 전에는 Electron 창 기동, 로컬 renderer 로딩, 필수 버튼 존재, 숫자 표시, 사칙연산, 모든 제수 0 오류, 초기화 수용 기준을 자동 검증하고, 실패 시 새 패키지를 배포하지 않고 직전 정상 패키지로 롤백한다."
+}

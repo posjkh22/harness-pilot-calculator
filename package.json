@@ -1,0 +1,18 @@
+{
+  "name": "pilot-calculator",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Electron calculator application",
+  "main": "electron/main.js",
+  "scripts": {
+    "build": "node --check electron/main.js && node --check electron/preload.js && node --check ui/calculator.js",
+    "lint": "node --check electron/main.js && node --check electron/preload.js && node --check ui/calculator.js",
+    "test:integration:electron": "node --test tests/electron.integration.test.js",
+    "test:integration:ui": "node --test tests/calculator.ui.test.js",
+    "test:unit": "node --test tests/calculator.test.js"
+  },
+  "devDependencies": {
+    "electron": "^39.0.0"
+  },
+  "type": "commonjs"
+}

@@ -1,0 +1,142 @@
+# Lives at <your-electron-app>/.harness/harness.config.yaml (harness init puts it there).
+# Every value shown here is the default unless noted.
+version: 1
+
+project:
+  runtime: node
+  language: javascript
+  ui: html
+  desktop: electron
+  api: auto # auto | yes | no
+  specDir: spec # where the official urs / SRS / matrix live
+
+workflow:
+  ursScoreThreshold: 85
+  srsScoreThreshold: 85
+  implementationScoreThreshold: 75
+  # Total attempts per stage, not extra retries. Exceeding one stops the run for a person.
+  maxUrsRetries: 3
+  maxSrsRetries: 3
+  maxImplementationRetries: 5
+  maxBuildFixRetries: 3
+  maxTestFixRetries: 3
+  maxSameFailureCount: 3 # identical failure signature repeats before triage
+  strictTdd: false
+  allowQualityExceptionApproval: false # build/test failures are never waivable regardless
+  # Steps a person chose to skip. Allowed: review_urs, review_srs, update_asis_baseline,
+  # review_implementation, build_project, run_tests, commit_changes,
+  # write_release_notes, request_deploy_approval, run_smoke_test.
+  # Hard gates and writer/implementer steps cannot be skipped. "harness run --skip a b"
+  # overrides this for one run; the dashboard (harness ui) edits this list too.
+  skipNodes: []
+  maxManifestRetries: 3
+
+llm:
+  provider: copilot # managed by the LLM preset in the dashboard
+  cli: copilot
+  model: gpt-5.6-luna
+  # reviewerModel: opus         # reviewers can use a stronger model than writers
+  # implementerModel: sonnet
+  # fallbackModel: sonnet
+  settingSources: "" # "" loads no user/project settings - keeps runs reproducible
+  strictMcpConfig: true
+  maxRetriesPerCall: 2 # transport errors and schema violations
+  # Optional response budget enforced by the harness. Claude CLI has no direct
+  # --max-output-tokens option, so this also adds a concise-output instruction.
+  maxOutputTokens: 24000
+  timeoutSeconds: 1800
+  # maxBudgetUsdPerCall: 5
+  # maxBudgetUsdPerRun: 50
+  # Optional per-role overrides. Empty means the global LLM defaults above.
+  # roles:
+  #   urs-writer:
+  #     model: gpt-5.6-luna
+  #   urs-reviewer:
+  #     model: gpt-5.5
+  # Claude enforces these tool lists. Codex workspace-write can still invoke its
+  # built-in shell; `harness doctor` reports that residual risk.
+  readOnlyTools: [ "Read", "Glob", "Grep" ] # writers and reviewers
+  editTools: [ "Read", "Glob", "Grep", "Edit", "Write" ]
+  extraArgs: []
+
+# Only commands listed here can be executed. They are spawned with shell: false.
+commands:
+  install: [ "npm", "ci" ]
+  lint: [ "npm", "run", "lint" ]
+  build: [ "npm", "run", "build" ]
+  testUi: [ "npm", "run", "test:integration:ui" ]
+  testElectron: [ "npm", "run", "test:integration:electron" ]
+  testUnit: [ "npm", "run", "test:unit" ]
+  # package: ["npm", "run", "dist:test"]
+
+timeoutsSeconds:
+  install: 600
+  lint: 600
+  build: 600
+  testSuite: 1200
+  package: 1800
+  deploy: 1800
+
+git:
+  branchPrefix: "harness/"
+  autoCommit: true
+  autoPush: false
+  requireCleanTree: true
+  allowedPaths:
+    - "electron/**"
+    - "src/**"
+    - "ui/**"
+    - "tests/**"
+    - "playwright.config.*"
+    - "spec/**"
+    - "package.json"
+    - "package-lock.json"
+
+security:
+  denyPaths:
+    - ".env*"
+    - "**/*.pem"
+    - "**/*.key"
+    - "node_modules/**"
+    - "dist/**"
+    - "build/**"
+  redactPatterns:
+    # masked in every log and artifact the harness writes
+    - "Authorization:.*"
+    - "*_TOKEN"
+    - "*_SECRET"
+    - "*_PASSWORD"
+    - "*_KEY"
+  secretScanPatterns:
+    # a match in a changed file or staged diff blocks the commit
+    - "sk-ant-[A-Za-z0-9_-]{8,}"
+    - "gh[pousr]_[A-Za-z0-9]{16,}"
+    - "-----BEGIN[^-]*PRIVATE KEY-----"
+    - "AKIA[0-9A-Z]{16}"
+
+deployment:
+  enabled: false # true also requires an adapter per environment
+  requireHumanApproval: true
+  artifactGlobs:
+    - "dist/**"
+  environments: {}
+  # environments:
+  #   staging:
+  #     adapter: "./deploy/staging-adapter.js"
+  #   production:
+  #     adapter: "./deploy/production-adapter.js"
+
+checkpoint:
+  driver: sqlite # sqlite | memory
+  path: ".harness/checkpoints.sqlite"
+
+# As-Is System Baseline (spec/as-is). The deterministic inventory - modules, IPC
+# channels, preload API, HTTP routes, storage, dependencies, tests, import graph -
+# is always built before the URS and refreshed before the commit. These settings
+# govern the LLM layer on top of it.
+asIs:
+  analysis: true # maintenance runs: seed selection + targeted analysis of the request's area before URS
+  maxRelevantFiles: 40 # upper bound on files handed to the analyzer after import-graph expansion
+  expansionHops: 2 # how far to follow dependents from the seeds (0 = seeds only)
+  maxFileBytes: 262144 # files larger than this are hashed but not scanned
+  narrativeRefresh: true # after tests pass: re-describe the modules this run changed before committing

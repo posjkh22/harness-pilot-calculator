@@ -1,4 +1,7 @@
-runs
-.harness
-harness.config.yaml
-node_modules
+.harness/runs/
+.harness/checkpoints.sqlite*
+.harness/active-run.json
+node_modules/
+test-results/
+playwright-report/
+coverage/

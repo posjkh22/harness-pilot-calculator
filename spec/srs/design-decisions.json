@@ -1,0 +1,194 @@
+[
+  {
+    "id": "DD-001",
+    "topic": "Electron runtime and application structure",
+    "kind": "TECHNOLOGY",
+    "choice": "Electron ^39 as the desktop runtime with Node.js main process and vanilla HTML/CSS/JavaScript renderer",
+    "alternatives": [
+      "A browser-only Node.js application",
+      "A different desktop framework",
+      "A renderer UI framework such as React"
+    ],
+    "rationale": "URS-001 explicitly requires Node.js and Electron, and vanilla web assets satisfy the HTML/CSS requirement without introducing an unrequested framework.",
+    "appliesTo": [
+      "SRS-URS-001-01",
+      "SRS-URS-002-01",
+      "SRS-URS-003-01",
+      "SRS-URS-004-01",
+      "SRS-URS-005-01",
+      "SRS-URS-006-01"
+    ],
+    "dependency": {
+      "name": "electron",
+      "versionRange": "^39.0.0",
+      "dev": true,
+      "reason": "Provides the required Electron desktop runtime and development launch command."
+    },
+    "supersedes": ""
+  },
+  {
+    "id": "DD-002",
+    "topic": "Calculator execution location",
+    "kind": "ARCHITECTURE",
+    "choice": "Run calculator state transitions and arithmetic entirely in the renderer process; use the main process only for window lifecycle",
+    "alternatives": [
+      "Move arithmetic into the main process over IPC",
+      "Run arithmetic in a worker",
+      "Use an external HTTP service"
+    ],
+    "rationale": "The calculator has no privileged data or I/O needs, so renderer-local synchronous state transitions minimize complexity and latency while preserving the Electron security boundary.",
+    "appliesTo": [
+      "SRS-URS-002-01",
+      "SRS-URS-003-01",
+      "SRS-URS-004-01",
+      "SRS-URS-005-01",
+      "SRS-URS-006-01"
+    ],
+    "dependency": null,
+    "supersedes": ""
+  },
+  {
+    "id": "DD-003",
+    "topic": "Communication mechanism",
+    "kind": "INTERFACE",
+    "choice": "No IPC or HTTP API for calculator operations; DOM events and internal modules are used",
+    "alternatives": [
+      "Expose calculator operations through Electron IPC",
+      "Expose a localhost HTTP API",
+      "Use preload methods for every button action"
+    ],
+    "rationale": "The requirements are local UI interactions and do not require main-process privileges or external clients. Avoiding unnecessary IPC and HTTP surfaces reduces attack surface and contract overhead.",
+    "appliesTo": [
+      "SRS-URS-002-01",
+      "SRS-URS-003-01",
+      "SRS-URS-004-01",
+      "SRS-URS-005-01",
+      "SRS-URS-006-01"
+    ],
+    "dependency": null,
+    "supersedes": ""
+  },
+  {
+    "id": "DD-004",
+    "topic": "Persistence and storage",
+    "kind": "DATA",
+    "choice": "No persistent storage; calculator state is in-memory and reset on application reload",
+    "alternatives": [
+      "Persist state in a JSON file under userData",
+      "Use SQLite",
+      "Persist state through a remote service"
+    ],
+    "rationale": "No requirement asks for history, settings, or recovery across launches. Avoiding storage prevents unnecessary sensitive-data retention and migration obligations.",
+    "appliesTo": [
+      "SRS-URS-003-01",
+      "SRS-URS-004-01",
+      "SRS-URS-005-01",
+      "SRS-URS-006-01"
+    ],
+    "dependency": null,
+    "supersedes": ""
+  },
+  {
+    "id": "DD-005",
+    "topic": "Synchronous versus asynchronous processing",
+    "kind": "ARCHITECTURE",
+    "choice": "Synchronous in-memory state transitions and arithmetic in renderer event handlers",
+    "alternatives": [
+      "Asynchronous IPC round trips",
+      "Worker-based asynchronous evaluation",
+      "HTTP request/response evaluation"
+    ],
+    "rationale": "All required operations are small and deterministic. Synchronous processing makes display updates immediate and avoids loading, retry, timeout, and duplicate-request concerns.",
+    "appliesTo": [
+      "SRS-URS-003-01",
+      "SRS-URS-004-01",
+      "SRS-URS-005-01",
+      "SRS-URS-006-01"
+    ],
+    "dependency": null,
+    "supersedes": ""
+  },
+  {
+    "id": "DD-006",
+    "topic": "Electron security configuration",
+    "kind": "SECURITY",
+    "choice": "BrowserWindow uses contextIsolation: true, nodeIntegration: false, and sandbox: true; preload exposes no calculator API",
+    "alternatives": [
+      "Enable nodeIntegration in the renderer",
+      "Disable context isolation",
+      "Expose calculator operations through a broad preload bridge"
+    ],
+    "rationale": "The renderer needs only DOM APIs, so the strongest Electron defaults can be retained without weakening security.",
+    "appliesTo": [
+      "SRS-URS-001-01",
+      "SRS-URS-002-01",
+      "SRS-URS-003-01",
+      "SRS-URS-004-01",
+      "SRS-URS-005-01",
+      "SRS-URS-006-01"
+    ],
+    "dependency": null,
+    "supersedes": ""
+  },
+  {
+    "id": "DD-007",
+    "topic": "Testing strategy",
+    "kind": "TESTING",
+    "choice": "Use Node.js built-in node:test for calculator unit tests and Electron integration tests for the packaged UI; use stable data-testid hooks",
+    "alternatives": [
+      "Manual-only verification",
+      "A third-party test framework",
+      "HTTP contract tests"
+    ],
+    "rationale": "The test strategy verifies pure state transitions quickly and validates the real Electron renderer without adding an unrequested test dependency.",
+    "appliesTo": [
+      "SRS-URS-001-01",
+      "SRS-URS-002-01",
+      "SRS-URS-003-01",
+      "SRS-URS-004-01",
+      "SRS-URS-005-01",
+      "SRS-URS-006-01"
+    ],
+    "dependency": null,
+    "supersedes": ""
+  },
+  {
+    "id": "DD-008",
+    "topic": "Package and deployment configuration",
+    "kind": "PROCESS",
+    "choice": "Define package.json scripts for start and test, package the Electron application with local HTML/CSS/JavaScript assets, and inject environment-specific values only through build/launcher configuration",
+    "alternatives": [
+      "Run from an ad hoc source command without package metadata",
+      "Bundle a server and external runtime",
+      "Store environment secrets in renderer source"
+    ],
+    "rationale": "The repository has no existing package manifest or deployment contract. Explicit scripts and local assets make build, pre-deployment validation, and rollback to the prior packaged artifact reproducible. This application has no secrets or environment-specific external integration.",
+    "appliesTo": [
+      "SRS-URS-001-01"
+    ],
+    "dependency": null,
+    "supersedes": ""
+  },
+  {
+    "id": "DD-009",
+    "topic": "Migration and compatibility",
+    "kind": "MIGRATION",
+    "choice": "Treat the application as a new system with no legacy IPC, HTTP, or storage contracts; preserve stable UI test identifiers after initial release",
+    "alternatives": [
+      "Introduce compatibility adapters for nonexistent interfaces",
+      "Create a versioned storage migration before persistence exists",
+      "Allow identifiers to change freely"
+    ],
+    "rationale": "The As-Is baseline contains no modules, interfaces, dependencies, tests, or storage. There is nothing to migrate, but UI automation identifiers become the first compatibility surface.",
+    "appliesTo": [
+      "SRS-URS-001-01",
+      "SRS-URS-002-01",
+      "SRS-URS-003-01",
+      "SRS-URS-004-01",
+      "SRS-URS-005-01",
+      "SRS-URS-006-01"
+    ],
+    "dependency": null,
+    "supersedes": ""
+  }
+]
